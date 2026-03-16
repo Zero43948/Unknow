@@ -1,0 +1,138 @@
+--// Điểu Nhân Aimlock LITE | Universal | Android low-end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+repeat task.wait() until LP.Character and Camera
+
+--=========== CONFIG (TỐI ƯU A03) ===========--
+local Prediction = 0.095
+local Smoothness = 0.34
+local MaxFOV = 170
+local AimFPS_ON = 24     -- rất nhẹ cho A03
+--==========================================--
+
+local AimON = false
+local FixLagEnabled = false
+local Target = nil
+local acc = 0
+
+--================ GUI =================--
+local gui = Instance.new("ScreenGui")
+gui.Name = "DieuNhanLite"
+gui.ResetOnSpawn = false
+pcall(function() gui.Parent = game:GetService("CoreGui") end)
+if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+
+--================ BUTTON =================--
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.new(0,150,0,40)
+btn.Position = UDim2.new(0.6,0,0.28,0)
+btn.Text = "   Điểu Nhân OFF"
+btn.TextScaled = true
+btn.Font = Enum.Font.GothamBold
+btn.TextColor3 = Color3.fromRGB(0,255,255)
+btn.BackgroundColor3 = Color3.fromRGB(15,15,15)
+btn.BorderSizePixel = 0
+btn.Active = true
+
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+local stroke = Instance.new("UIStroke", btn)
+stroke.Thickness = 1.5
+stroke.Color = Color3.fromRGB(120,120,120)
+stroke.Transparency = 0.3
+
+-- Drag
+local dragging, dragStart, startPos
+btn.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true; dragStart = i.Position; startPos = btn.Position
+	end
+end)
+btn.InputChanged:Connect(function(i)
+	if dragging and (i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseMovement) then
+		local d = i.Position - dragStart
+		btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+	end
+end)
+btn.InputEnded:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+-- Fix Lag label (bottom right)
+local fixLagLabel = Instance.new("TextLabel", gui)
+fixLagLabel.Size = UDim2.new(0,120,0,22)
+fixLagLabel.Position = UDim2.new(1,-130,1,-30)
+fixLagLabel.BackgroundTransparency = 1
+fixLagLabel.Text = "Fix Lag: ON"
+fixLagLabel.TextColor3 = Color3.fromRGB(0,255,170)
+fixLagLabel.TextScaled = true
+fixLagLabel.Font = Enum.Font.GothamBold
+fixLagLabel.TextStrokeTransparency = 0.6
+fixLagLabel.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+fixLagLabel.Visible = false
+fixLagLabel.ZIndex = 10
+
+--================ TOGGLE =================--
+btn.MouseButton1Click:Connect(function()
+	AimON = not AimON
+	if AimON then
+		FixLagEnabled = true
+		btn.Text = "   Điểu Nhân ON"
+		stroke.Color = Color3.fromRGB(0,255,255)
+		stroke.Transparency = 0
+		fixLagLabel.Visible = true
+	else
+		FixLagEnabled = false
+		Target = nil
+		btn.Text = "   Điểu Nhân OFF"
+		stroke.Color = Color3.fromRGB(120,120,120)
+		stroke.Transparency = 0.3
+		fixLagLabel.Visible = false
+	end
+end)
+
+--================ TARGET =================--
+local function GetClosest()
+	local closest, dist = nil, MaxFOV
+	for _,plr in pairs(Players:GetPlayers()) do
+		if plr ~= LP and plr.Character
+		and plr.Character:FindFirstChild("HumanoidRootPart")
+		and plr.Character:FindFirstChild("Humanoid")
+		and plr.Character.Humanoid.Health > 0 then
+			local pos, onScreen = Camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+			if onScreen then
+				local mag = (Vector2.new(pos.X,pos.Y) -
+					Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y/2)).Magnitude
+				if mag < dist then dist = mag; closest = plr end
+			end
+		end
+	end
+	return closest
+end
+
+--================ AIM LOOP (SIÊU NHẸ) =================--
+RunService.RenderStepped:Connect(function(dt)
+	if FixLagEnabled then
+		acc += dt
+		if acc < (1 / AimFPS_ON) then return end
+		acc = 0
+	end
+	if not AimON then return end
+
+	if not Target then Target = GetClosest() end
+	if not Target or not Target.Character then Target = nil return end
+
+	local hrp = Target.Character:FindFirstChild("HumanoidRootPart")
+	local hum = Target.Character:FindFirstChild("Humanoid")
+	if not hrp or not hum or hum.Health <= 0 then Target = nil return end
+
+	local predicted = hrp.Position + hrp.Velocity * Prediction
+	Camera.CFrame = Camera.CFrame:Lerp(
+		CFrame.new(Camera.CFrame.Position, predicted),
+		Smoothness
+	)
+end)
